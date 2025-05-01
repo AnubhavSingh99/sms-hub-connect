@@ -1,94 +1,140 @@
-
-import React, { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import React, { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Button } from "../components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Search, Plus, Send, User } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-
-// Mock data
-const messages = [
-  { 
-    id: 1, 
-    contact: "John Doe", 
-    number: "+1234567890", 
-    messages: [
-      { id: 1, content: "Hey, I was wondering about our appointment", time: "10:30 AM", incoming: true },
-      { id: 2, content: "Yes, it's still scheduled for tomorrow at 2 PM", time: "10:35 AM", incoming: false },
-      { id: 3, content: "Great, thank you for confirming!", time: "10:38 AM", incoming: true },
-    ]
-  },
-  { 
-    id: 2, 
-    contact: "Jane Smith", 
-    number: "+0987654321", 
-    messages: [
-      { id: 1, content: "The documents have been sent to your email", time: "Yesterday", incoming: false },
-      { id: 2, content: "Thank you! I've received them", time: "Yesterday", incoming: true },
-    ]
-  },
-  { 
-    id: 3, 
-    contact: "Mike Johnson", 
-    number: "+1122334455", 
-    messages: [
-      { id: 1, content: "Please call me when you have a moment", time: "2 days ago", incoming: true },
-      { id: 2, content: "I'll call you in about 30 minutes", time: "2 days ago", incoming: false },
-      { id: 3, content: "Perfect, I'll be available", time: "2 days ago", incoming: true },
-    ]
-  },
-];
-
-// Mock contacts data
-const contacts = [
-  { id: 1, name: "John Doe", number: "+1234567890" },
-  { id: 2, name: "Jane Smith", number: "+0987654321" },
-  { id: 3, name: "Mike Johnson", number: "+1122334455" },
-  { id: 4, name: "Sarah Williams", number: "+5566778899" },
-  { id: 5, name: "Alex Brown", number: "+1231231234" },
-];
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import { Textarea } from "../components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Avatar, AvatarFallback } from "../components/ui/avatar";
+import { useToast } from "../hooks/use-toast";
 
 const Messages = () => {
-  const [selectedConversation, setSelectedConversation] = useState(messages[0]);
+  const [messages, setMessages] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [newMessage, setNewMessage] = useState("");
   const [selectedContact, setSelectedContact] = useState("");
   const [newMessageContent, setNewMessageContent] = useState("");
-  
-  // Filter messages based on search term
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchContacts();
+    fetchMessages();
+  }, []);
+
+  const fetchContacts = async () => {
+    try {
+      const response = await fetch("/api/contacts");
+      if (!response.ok) throw new Error("Failed to fetch contacts");
+      const data = await response.json();
+      setContacts(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const fetchMessages = async () => {
+    try {
+      const response = await fetch("/api/messages");
+      if (!response.ok) throw new Error("Failed to fetch messages");
+      const data = await response.json();
+      setMessages(data);
+      if (data.length > 0) {
+        setSelectedConversation(data[0]);
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const filteredConversations = messages.filter(
-    msg => msg.contact.toLowerCase().includes(searchTerm.toLowerCase()) || 
-           msg.number.includes(searchTerm)
+    msg =>
+      (msg.contactName && msg.contactName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (msg.number && msg.number.includes(searchTerm))
   );
 
-  // Handle sending new message in an existing conversation
-  const handleSendMessage = () => {
-    if (!newMessage.trim()) return;
-    console.log("Sending message:", newMessage);
-    setNewMessage("");
-    // Here you would typically make an API call to send the message
-  };
-
-  // Handle creating a new message conversation
-  const handleCreateNewMessage = () => {
-    if (!selectedContact || !newMessageContent.trim()) return;
-    console.log("New message to:", selectedContact, "Content:", newMessageContent);
-    // Here you would typically make an API call to send the message and create a conversation
-    setSelectedContact("");
-    setNewMessageContent("");
-  };
-
-  // Get initials for avatar
-  const getInitials = (name: string) => {
+  const getInitials = (name) => {
     return name
       .split(' ')
       .map(word => word[0])
       .join('')
       .toUpperCase();
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !selectedConversation) return;
+    try {
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId: selectedConversation.contactId,
+          content: newMessage,
+          incoming: false,
+          time: new Date(),
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to send message");
+      const sentMessage = await response.json();
+      setMessages(prevMessages => {
+        const updatedMessages = prevMessages.map(conv => {
+          if (conv.contactId === sentMessage.contactId) {
+            return {
+              ...conv,
+              messages: [...conv.messages, sentMessage],
+            };
+          }
+          return conv;
+        });
+        return updatedMessages;
+      });
+      setNewMessage("");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreateNewMessage = async () => {
+    if (!selectedContact || !newMessageContent.trim()) return;
+    try {
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId: selectedContact,
+          content: newMessageContent,
+          incoming: false,
+          time: new Date(),
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to send message");
+      const sentMessage = await response.json();
+      // Optionally refresh messages or add new conversation
+      fetchMessages();
+      setSelectedContact("");
+      setNewMessageContent("");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -117,7 +163,7 @@ const Messages = () => {
                   </SelectTrigger>
                   <SelectContent>
                     {contacts.map(contact => (
-                      <SelectItem key={contact.id} value={contact.number}>
+                      <SelectItem key={contact._id} value={contact._id}>
                         {contact.name} ({contact.number})
                       </SelectItem>
                     ))}
@@ -134,7 +180,7 @@ const Messages = () => {
               </div>
             </div>
             <DialogFooter>
-              <Button 
+              <Button
                 className="bg-sms-primary hover:bg-sms-primary/90"
                 onClick={handleCreateNewMessage}
               >
@@ -144,7 +190,7 @@ const Messages = () => {
           </DialogContent>
         </Dialog>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="md:col-span-1">
           <CardHeader className="pb-3">
@@ -161,14 +207,14 @@ const Messages = () => {
           <CardContent className="p-0">
             <Tabs defaultValue="all">
               <TabsList className="w-full bg-transparent border-b rounded-none p-0">
-                <TabsTrigger 
-                  value="all" 
+                <TabsTrigger
+                  value="all"
                   className="flex-1 rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
                 >
                   All
                 </TabsTrigger>
-                <TabsTrigger 
-                  value="unread" 
+                <TabsTrigger
+                  value="unread"
                   className="flex-1 rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
                 >
                   Unread
@@ -181,24 +227,30 @@ const Messages = () => {
                   ) : (
                     filteredConversations.map((conv) => (
                       <div
-                        key={conv.id}
-                        className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/50 ${selectedConversation.id === conv.id ? "bg-muted" : ""}`}
+                        key={conv._id}
+                        className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/50 ${
+                          selectedConversation && selectedConversation._id === conv._id ? "bg-muted" : ""
+                        }`}
                         onClick={() => setSelectedConversation(conv)}
                       >
                         <Avatar>
                           <AvatarFallback className="bg-sms-primary/10 text-sms-primary">
-                            {getInitials(conv.contact)}
+                            {getInitials(conv.contactName)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-center">
-                            <p className="font-medium">{conv.contact}</p>
+                            <p className="font-medium">{conv.contactName}</p>
                             <span className="text-xs text-muted-foreground">
-                              {conv.messages[conv.messages.length - 1].time}
+                              {conv.messages && conv.messages.length > 0
+                                ? new Date(conv.messages[conv.messages.length - 1].time).toLocaleString()
+                                : ""}
                             </span>
                           </div>
                           <p className="text-sm text-muted-foreground truncate">
-                            {conv.messages[conv.messages.length - 1].content}
+                            {conv.messages && conv.messages.length > 0
+                              ? conv.messages[conv.messages.length - 1].content
+                              : ""}
                           </p>
                         </div>
                       </div>
@@ -220,43 +272,43 @@ const Messages = () => {
                 <div className="flex items-center gap-3">
                   <Avatar>
                     <AvatarFallback className="bg-sms-primary/10 text-sms-primary">
-                      {getInitials(selectedConversation.contact)}
+                      {getInitials(selectedConversation.contactName)}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <CardTitle>{selectedConversation.contact}</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedConversation.number}
-                    </p>
+                    <CardTitle>{selectedConversation.contactName}</CardTitle>
+                    <p className="text-sm text-muted-foreground">{selectedConversation.contactNumber}</p>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="flex flex-col h-[400px]">
                   <div className="flex-1 overflow-auto p-4 space-y-4">
-                    {selectedConversation.messages.map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`flex ${
-                          msg.incoming ? "justify-start" : "justify-end"
-                        }`}
-                      >
+                    {selectedConversation.messages && selectedConversation.messages.length > 0 ? (
+                      selectedConversation.messages.map((msg) => (
                         <div
-                          className={`max-w-[80%] p-3 rounded-lg ${
-                            msg.incoming
-                              ? "bg-muted text-foreground"
-                              : "bg-sms-primary text-primary-foreground"
-                          }`}
+                          key={msg._id}
+                          className={`flex ${msg.incoming ? "justify-start" : "justify-end"}`}
                         >
-                          <p>{msg.content}</p>
-                          <p className={`text-xs mt-1 ${
-                            msg.incoming ? "text-muted-foreground" : "text-primary-foreground/70"
-                          }`}>
-                            {msg.time}
-                          </p>
+                          <div
+                            className={`max-w-[80%] p-3 rounded-lg ${
+                              msg.incoming ? "bg-muted text-foreground" : "bg-sms-primary text-primary-foreground"
+                            }`}
+                          >
+                            <p>{msg.content}</p>
+                            <p
+                              className={`text-xs mt-1 ${
+                                msg.incoming ? "text-muted-foreground" : "text-primary-foreground/70"
+                              }`}
+                            >
+                              {new Date(msg.time).toLocaleString()}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <p className="text-center text-muted-foreground">No messages</p>
+                    )}
                   </div>
                   <div className="border-t p-4">
                     <div className="flex gap-2">
@@ -271,7 +323,7 @@ const Messages = () => {
                         }}
                         className="flex-1"
                       />
-                      <Button 
+                      <Button
                         onClick={handleSendMessage}
                         className="bg-sms-primary hover:bg-sms-primary/90"
                       >

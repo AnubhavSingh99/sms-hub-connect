@@ -1,41 +1,47 @@
-
-import React, { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import React, { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Button } from "../components/ui/button";
 import { Search, Plus, Edit, Trash, MessageSquare } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useToast } from "@/hooks/use-toast";
-
-// Mock data
-const initialContacts = [
-  { id: 1, name: "John Doe", number: "+1234567890", email: "john@example.com", lastContact: "2 days ago", tags: ["Customer", "VIP"] },
-  { id: 2, name: "Jane Smith", number: "+0987654321", email: "jane@example.com", lastContact: "1 week ago", tags: ["Customer"] },
-  { id: 3, name: "Mike Johnson", number: "+1122334455", email: "mike@example.com", lastContact: "3 days ago", tags: ["Supplier"] },
-  { id: 4, name: "Sarah Williams", number: "+5566778899", email: "sarah@example.com", lastContact: "1 month ago", tags: ["Customer", "New"] },
-  { id: 5, name: "Alex Brown", number: "+1231231234", email: "alex@example.com", lastContact: "2 weeks ago", tags: ["Lead"] },
-  { id: 6, name: "Emily Davis", number: "+4564564567", email: "emily@example.com", lastContact: "Yesterday", tags: ["Customer"] },
-  { id: 7, name: "Robert Wilson", number: "+7897897890", email: "robert@example.com", lastContact: "3 weeks ago", tags: ["Lead"] },
-];
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import { Avatar, AvatarFallback } from "../components/ui/avatar";
+import { useToast } from "../hooks/use-toast";
 
 const Contacts = () => {
-  const [contacts, setContacts] = useState(initialContacts);
+  const [contacts, setContacts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newContact, setNewContact] = useState({ name: "", number: "", email: "" });
-  const [editingContact, setEditingContact] = useState<null | typeof initialContacts[0]>(null);
+  const [editingContact, setEditingContact] = useState(null);
   const { toast } = useToast();
 
-  // Filter contacts based on search term
+  useEffect(() => {
+    fetchContacts();
+  }, []);
+
+  const fetchContacts = async () => {
+    try {
+      const response = await fetch("/api/contacts");
+      if (!response.ok) throw new Error("Failed to fetch contacts");
+      const data = await response.json();
+      setContacts(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const filteredContacts = contacts.filter(
-    contact => contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              contact.number.includes(searchTerm) ||
-              contact.email.toLowerCase().includes(searchTerm.toLowerCase())
+    contact =>
+      contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      contact.number.includes(searchTerm) ||
+      (contact.email && contact.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // Get initials for avatar
-  const getInitials = (name: string) => {
+  const getInitials = (name) => {
     return name
       .split(' ')
       .map(word => word[0])
@@ -43,8 +49,7 @@ const Contacts = () => {
       .toUpperCase();
   };
 
-  // Handle adding a new contact
-  const handleAddContact = () => {
+  const handleAddContact = async () => {
     if (!newContact.name || !newContact.number) {
       toast({
         title: "Error",
@@ -53,29 +58,31 @@ const Contacts = () => {
       });
       return;
     }
-
-    const newId = Math.max(...contacts.map(c => c.id)) + 1;
-    setContacts([
-      ...contacts,
-      {
-        id: newId,
-        ...newContact,
-        lastContact: "Never",
-        tags: ["New"]
-      }
-    ]);
-    
-    setNewContact({ name: "", number: "", email: "" });
-    setIsAddDialogOpen(false);
-    
-    toast({
-      title: "Contact Added",
-      description: `${newContact.name} has been added to your contacts.`,
-    });
+    try {
+      const response = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newContact),
+      });
+      if (!response.ok) throw new Error("Failed to add contact");
+      const addedContact = await response.json();
+      setContacts([...contacts, addedContact]);
+      setNewContact({ name: "", number: "", email: "" });
+      setIsAddDialogOpen(false);
+      toast({
+        title: "Contact Added",
+        description: `${addedContact.name} has been added to your contacts.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
-  // Handle editing contact
-  const handleEditContact = () => {
+  const handleEditContact = async () => {
     if (!editingContact || !editingContact.name || !editingContact.number) {
       toast({
         title: "Error",
@@ -84,27 +91,45 @@ const Contacts = () => {
       });
       return;
     }
-
-    setContacts(contacts.map(contact => 
-      contact.id === editingContact.id ? editingContact : contact
-    ));
-    
-    setEditingContact(null);
-    
-    toast({
-      title: "Contact Updated",
-      description: `${editingContact.name}'s information has been updated.`,
-    });
+    try {
+      const response = await fetch(`/api/contacts/${editingContact._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingContact),
+      });
+      if (!response.ok) throw new Error("Failed to update contact");
+      const updatedContact = await response.json();
+      setContacts(contacts.map(contact => (contact._id === updatedContact._id ? updatedContact : contact)));
+      setEditingContact(null);
+      toast({
+        title: "Contact Updated",
+        description: `${updatedContact.name}'s information has been updated.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
-  // Handle deleting contact
-  const handleDeleteContact = (id: number, name: string) => {
-    setContacts(contacts.filter(contact => contact.id !== id));
-    
-    toast({
-      title: "Contact Deleted",
-      description: `${name} has been removed from your contacts.`,
-    });
+  const handleDeleteContact = async (id, name) => {
+    try {
+      const response = await fetch(`/api/contacts/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete contact");
+      setContacts(contacts.filter(contact => contact._id !== id));
+      toast({
+        title: "Contact Deleted",
+        description: `${name} has been removed from your contacts.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -132,7 +157,7 @@ const Contacts = () => {
                   id="name"
                   placeholder="Full Name"
                   value={newContact.name}
-                  onChange={(e) => setNewContact({...newContact, name: e.target.value})}
+                  onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
                 />
               </div>
               <div className="grid gap-2">
@@ -141,7 +166,7 @@ const Contacts = () => {
                   id="number"
                   placeholder="+1234567890"
                   value={newContact.number}
-                  onChange={(e) => setNewContact({...newContact, number: e.target.value})}
+                  onChange={(e) => setNewContact({ ...newContact, number: e.target.value })}
                 />
               </div>
               <div className="grid gap-2">
@@ -150,13 +175,13 @@ const Contacts = () => {
                   id="email"
                   placeholder="email@example.com"
                   value={newContact.email}
-                  onChange={(e) => setNewContact({...newContact, email: e.target.value})}
+                  onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
                 />
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-              <Button 
+              <Button
                 className="bg-sms-primary hover:bg-sms-primary/90"
                 onClick={handleAddContact}
               >
@@ -206,7 +231,7 @@ const Contacts = () => {
                   </tr>
                 ) : (
                   filteredContacts.map((contact) => (
-                    <tr key={contact.id} className="border-b hover:bg-muted/50">
+                    <tr key={contact._id} className="border-b hover:bg-muted/50">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8">
@@ -220,11 +245,11 @@ const Contacts = () => {
                       <td className="px-4 py-3 text-sm">{contact.number}</td>
                       <td className="px-4 py-3 text-sm hidden md:table-cell">{contact.email}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground hidden lg:table-cell">
-                        {contact.lastContact}
+                        {contact.lastContact ? new Date(contact.lastContact).toLocaleDateString() : "Never"}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
-                          {contact.tags.map((tag, idx) => (
+                          {contact.tags && contact.tags.map((tag, idx) => (
                             <span
                               key={idx}
                               className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sms-accent/30 text-sms-primary"
@@ -241,10 +266,10 @@ const Contacts = () => {
                           </Button>
                           <Dialog>
                             <DialogTrigger asChild>
-                              <Button 
-                                size="sm" 
+                              <Button
+                                size="sm"
                                 variant="ghost"
-                                onClick={() => setEditingContact({...contact})}
+                                onClick={() => setEditingContact({ ...contact })}
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
@@ -263,7 +288,7 @@ const Contacts = () => {
                                     <Input
                                       id="edit-name"
                                       value={editingContact.name}
-                                      onChange={(e) => setEditingContact({...editingContact, name: e.target.value})}
+                                      onChange={(e) => setEditingContact({ ...editingContact, name: e.target.value })}
                                     />
                                   </div>
                                   <div className="grid gap-2">
@@ -271,7 +296,7 @@ const Contacts = () => {
                                     <Input
                                       id="edit-number"
                                       value={editingContact.number}
-                                      onChange={(e) => setEditingContact({...editingContact, number: e.target.value})}
+                                      onChange={(e) => setEditingContact({ ...editingContact, number: e.target.value })}
                                     />
                                   </div>
                                   <div className="grid gap-2">
@@ -279,7 +304,7 @@ const Contacts = () => {
                                     <Input
                                       id="edit-email"
                                       value={editingContact.email}
-                                      onChange={(e) => setEditingContact({...editingContact, email: e.target.value})}
+                                      onChange={(e) => setEditingContact({ ...editingContact, email: e.target.value })}
                                     />
                                   </div>
                                 </div>
@@ -288,7 +313,7 @@ const Contacts = () => {
                                 <Button variant="outline" onClick={() => setEditingContact(null)}>
                                   Cancel
                                 </Button>
-                                <Button 
+                                <Button
                                   className="bg-sms-primary hover:bg-sms-primary/90"
                                   onClick={handleEditContact}
                                 >
@@ -312,9 +337,9 @@ const Contacts = () => {
                               </DialogHeader>
                               <DialogFooter>
                                 <Button variant="outline">Cancel</Button>
-                                <Button 
+                                <Button
                                   variant="destructive"
-                                  onClick={() => handleDeleteContact(contact.id, contact.name)}
+                                  onClick={() => handleDeleteContact(contact._id, contact.name)}
                                 >
                                   Delete
                                 </Button>
